@@ -1,32 +1,28 @@
 from __future__ import annotations
 
 import os
-from sys import version_info as pyver
-from typing import TYPE_CHECKING
 from datetime import datetime
 from datetime import timezone
+from sys import version_info as pyver
+from typing import TYPE_CHECKING
 
-import fs
 import attr
+import fs
+import fs.errors
 import numpy as np
 import pytest
-import fs.errors
 
 from bentoml import Tag
-from bentoml.exceptions import BentoMLException
-from bentoml._internal.models import ModelContext
+from bentoml._internal.configuration import BENTOML_VERSION
 from bentoml._internal.models import ModelOptions as InternalModelOptions
 from bentoml._internal.models.model import Model
 from bentoml._internal.models.model import ModelInfo
 from bentoml._internal.models.model import ModelStore
-from bentoml._internal.configuration import BENTOML_VERSION
+from bentoml.exceptions import BentoMLException
+from bentoml.testing.pytest import TEST_MODEL_CONTEXT
 
 if TYPE_CHECKING:
     from pathlib import Path
-
-TEST_MODEL_CONTEXT = ModelContext(
-    framework_name="testing", framework_versions={"testing": "v1"}
-)
 
 TEST_PYTHON_VERSION = f"{pyver.major}.{pyver.minor}.{pyver.micro}"
 
@@ -79,15 +75,13 @@ creation_time: '{creation_time}'
 
 
 @attr.define
-class TestModelOptions(InternalModelOptions):
+class ModelOptions(InternalModelOptions):
     option_a: int
     option_b: str
     option_c: list[float]
 
 
-ModelOptions = TestModelOptions
-
-
+@pytest.mark.usefixtures("change_test_dir")
 def test_model_info(tmpdir: "Path"):
     start = datetime.now(timezone.utc)
     modelinfo_a = ModelInfo(
@@ -95,7 +89,7 @@ def test_model_info(tmpdir: "Path"):
         module="module",
         api_version="v1",
         labels={},
-        options=TestModelOptions(option_a=42, option_b="foo", option_c=[0.1, 0.2]),
+        options=ModelOptions(option_a=42, option_b="foo", option_c=[0.1, 0.2]),
         metadata={},
         context=TEST_MODEL_CONTEXT,
         signatures={"predict": {"batchable": True}},
@@ -109,7 +103,7 @@ def test_model_info(tmpdir: "Path"):
     tag = Tag("test", "v1")
     module = __name__
     labels = {"label": "stringvalue"}
-    options = TestModelOptions(option_a=1, option_b="foo", option_c=[0.1, 0.2])
+    options = ModelOptions(option_a=1, option_b="foo", option_c=[0.1, 0.2])
     metadata = {"a": 0.1, "b": 1, "c": np.array([2, 3, 4], dtype=np.uint32)}
     # TODO: add test cases for input_spec and output_spec
     signatures = {
@@ -173,6 +167,18 @@ def test_model_creationtime():
     assert repr(model_a) == f'Model(tag="{model_a.tag}", path="{model_a.path}")'
 
 
+def test_model_version():
+    model_with_version = Model.create(
+        "testmodel:myversion",
+        module="test",
+        api_version="v1",
+        signatures={},
+        context=TEST_MODEL_CONTEXT,
+    )
+
+    assert model_with_version.info.version == "myversion"
+
+
 class AdditionClass:
     def __init__(self, x: int):
         self.x = x
@@ -192,7 +198,7 @@ def fixture_bento_model():
         api_version="v1",
         signatures={},
         context=TEST_MODEL_CONTEXT,
-        options=TestModelOptions(option_a=1, option_b="foo", option_c=[0.1, 0.2]),
+        options=ModelOptions(option_a=1, option_b="foo", option_c=[0.1, 0.2]),
         custom_objects={
             "add": AdditionClass(add_num_1),
         },

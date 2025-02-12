@@ -1,17 +1,19 @@
 from __future__ import annotations
 
+import lightgbm as lgb
 import numpy as np
 import pandas as pd
-import lightgbm as lgb
 from sklearn.datasets import load_breast_cancer
 
 import bentoml
 
 from . import FrameworkTestModel
-from . import FrameworkTestModelInput as Input
 from . import FrameworkTestModelConfiguration as Config
+from . import FrameworkTestModelInput as Input
 
 framework = bentoml.lightgbm
+
+backward_compatible = True
 
 # read in data
 cancer = load_breast_cancer()  # type: ignore (incomplete sklearn types)

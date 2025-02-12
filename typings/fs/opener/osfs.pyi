@@ -1,11 +1,9 @@
-import typing
 from typing import Text
+
 from ..osfs import OSFS
 from .base import Opener
 from .parse import ParseResult
 from .registry import registry
-
-if typing.TYPE_CHECKING: ...
 
 @registry.install
 class OSFSOpener(Opener):

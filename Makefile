@@ -2,77 +2,53 @@ SHELL := /bin/bash
 .DEFAULT_GOAL := help
 
 GIT_ROOT ?= $(shell git rev-parse --show-toplevel)
-USE_VERBOSE ?=false
-USE_GPU ?= false
 
-help: ## Show all Makefile targets
+help: ## Show a;ll Makefile targets
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "\033[33m%-30s\033[0m %s\n", $$1, $$2}'
-
+.PHONY: .pdm
+.pdm:  ## Check that PDM is installed
+	@pdm -V || echo 'Please install PDM: https://pdm.fming.dev/latest/\#installation'
+.PHONY: .pre-commit
+.pre-commit:  ## Check that pre-commit is installed
+	@pre-commit -V || echo 'Please install pre-commit: https://pre-commit.com/'
+.PHONY: install
+install: .pdm .pre-commit  ## Install the package, dependencies, and pre-commit for local development
+	pdm install -G all
+	pre-commit install --install-hooks
+.PHONY: refresh-lockfiles
+refresh-lockfiles: .pdm  ## Sync lockfiles with requirements files.
+	pdm update --update-reuse -G all
+.PHONY: format format-proto lint lint-proto type style clean ui
 format: ## Running code formatter: black and isort
-	@./scripts/tools/formatter.sh
-lint: ## Running lint checker: pylint
-	@./scripts/tools/linter.sh
+	@echo "(black) Formatting codebase..."
+	@pre-commit run --all-files black-jupyter
+format-proto: ## Running proto formatter: buf
+	@echo "(buf) Formatting proto files..."
+	@pre-commit run --all-files buf-format
+lint: ## Running lint checker: ruff
+	@echo "(ruff) Linting development project..."
+	@pre-commit run --all-files ruff
+lint-proto: ## Running proto lint checker: buf via docker
+	@echo "(buf) Linting proto files..."
+	@pre-commit run --all-files buf-lint
 type: ## Running type checker: pyright
-	@./scripts/tools/type_checker.sh
-stubs-cleanup: ## Cleanup stubs
-	@./scripts/tools/stubs_cleanup.sh
-hooks: __check_defined_FORCE ## Install pre-defined hooks
-	@./scripts/install_hooks.sh
-
-
-__style_src := $(wildcard $(GIT_ROOT)/scripts/ci/style/*.sh)
-__style_name := ${__style_src:_check.sh=}
-tools := $(foreach t, $(__style_name), ci-$(shell basename $(t)))
-
-ci-all: $(tools) ## Running codestyle in CI: black, isort, pylint, pyright
-
-ci-%:
-	$(eval style := $(subst ci-, ,$@))
-	@./scripts/ci/style/$(style)_check.sh
-
-.PHONY: ci-format
-ci-format: ci-black ci-isort ## Running format check in CI: black, isort
-
-.PHONY: ci-lint
-ci-lint: ci-pylint ## Running lint check in CI: pylint
-
-
-tests-%: check-defined-USE_GPU check-defined-USE_VERBOSE
-	$(eval type :=$(subst tests-, , $@))
-	$(eval RUN_ARGS:=$(wordlist 2,$(words $(MAKECMDGOALS)),$(MAKECMDGOALS)))
-	$(eval __positional:=$(foreach t, $(RUN_ARGS), -$(t)))
-ifeq ($(USE_VERBOSE),true)
-	./scripts/ci/run_tests.sh -v $(type) $(__positional)
-else ifeq ($(USE_GPU),true)
-	./scripts/ci/run_tests.sh -v $(type) --gpus $(__positional)
-else
-	./scripts/ci/run_tests.sh $(type) $(__positional)
-endif
-
-
-install-local: ## Install BentoML in editable mode
-	@pip install --editable .
-install-dev-deps: ## Install all dev dependencies
-	@echo Installing dev dependencies...
-	@pip install -r requirements/dev-requirements.txt
-install-tests-deps: ## Install all tests dependencies
-	@echo Installing tests dependencies...
-	@pip install -r requirements/tests-requirements.txt
-install-docs-deps: ## Install documentation dependencies
-	@echo Installing docs dependencies...
-	@pip install -r requirements/docs-requirements.txt
+	@echo "(pyright) Typechecking codebase..."
+	@pre-commit run typecheck --all-files
+style: format lint format-proto lint-proto ## Running formatter and linter
+clean: ## Clean all generated files
+	@echo "Cleaning all generated files..."
+	@$(MAKE) clean -C $(GIT_ROOT)/docs
+	@find . -type f -name '*.py[co]' -delete -o -type d -name __pycache__ -delete
 
 # Docs
-watch-docs: install-docs-deps ## Build and watch documentation
-	sphinx-autobuild docs/source docs/build/html
+watch-docs: ## Build and watch documentation
+	pdm run sphinx-autobuild docs/source docs/build/html --watch $(GIT_ROOT)/src/ --ignore "bazel-*"
 spellcheck-docs: ## Spell check documentation
-	sphinx-build -b spelling ./docs/source ./docs/build || (echo "Error running spellchecker.. You may need to run 'make install-spellchecker-deps'"; exit 1)
-
+	pdm run sphinx-build -b spelling ./docs/source ./docs/build || (echo "Error running spellchecker.. You may need to run 'make install-spellchecker-deps'"; exit 1)
 OS := $(shell uname)
 ifeq ($(OS),Darwin)
 install-spellchecker-deps: ## Install MacOS dependencies for spellchecker
 	brew install enchant
-	pip install sphinxcontrib-spelling
 else ifneq ("$(wildcard $(/etc/debian_version))","")
 install-spellchecker-deps: ## Install Debian-based dependencies for spellchecker
 	sudo apt install libenchant-dev
@@ -81,15 +57,3 @@ install-spellchecker-deps: ## Inform users to install enchant depending on their
 	@echo Make sure to install enchant from your distros package manager
 	@exit 1
 endif
-
-check_defined = $(strip $(foreach 1,$1, $(call __check_defined,$1,$(strip $(value 2)))))
-__check_defined = \
-    $(if $(value $1),, \
-        $(error Undefined $1$(if $2, ($2))$(if $(value @), \
-                required by target `$@`)))
-check-defined-% : __check_defined_FORCE
-	$(eval $@_target := $(subst check-defined-, ,$@))
-	@:$(call check_defined, $*, $@_target)
-
-.PHONY : __check_defined_FORCE
-__check_defined_FORCE:

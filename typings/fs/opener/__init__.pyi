@@ -1,10 +1,10 @@
-import contextlib, typing as t
+import contextlib
+import typing as t
+
 from ..base import FS
 from .base import Opener
 from .parse import parse_fs_url as parse
 from .registry import registry
-
-if t.TYPE_CHECKING: ...
 
 def open_fs(
     fs_url: t.Union[FS, t.Text],

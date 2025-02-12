@@ -109,5 +109,64 @@ tests/integration/data
 
 # setuptools_scm generated version file
 typings
-bentoml/_version.py
-typings
+**/*/_version.py
+
+# test files
+catboost_info
+
+# ignore pyvenv
+pyvenv.cfg
+
+# bazel generated files
+bazel-*
+grpc-client/cpp/bentoml
+grpc-client/go/bentoml
+grpc-client/node/bentoml
+node_modules
+thirdparty
+
+# Swift-related
+**/*/Sources/bentoml
+.DS_Store
+**/*/.build
+/Packages
+/*.xcodeproj
+xcuserdata/
+DerivedData/
+.swiftpm/config/registries.json
+.swiftpm/xcode/package.xcworkspace/contents.xcworkspacedata
+.netrc
+Package.resolved
+
+# Java-Kotlin
+**/*/java/**/*/bentoml
+**/*/kotlin/**/*/bentoml
+.gradle
+
+# PHP generated stubs
+**/*/php/Bentoml
+**/*/php/GPBMetadata
+composer.lock
+vendor
+*.pkl
+*.ckpt
+
+# Triton-related
+*.pt
+*.savedmodel
+*.onnx
+*.engine
+*.plan
+*.bin
+yolov5*
+
+# MLflow runs
+mlruns/
+
+# pdm
+.pdm-python
+.python-version
+.pdm-build/
+
+# gradio flag
+flagged/

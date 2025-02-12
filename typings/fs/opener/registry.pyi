@@ -1,5 +1,13 @@
-import contextlib, typing
-from typing import Callable, Iterator, List, Text, Tuple, Type, Union
+import contextlib
+import typing
+from typing import Callable
+from typing import Iterator
+from typing import List
+from typing import Text
+from typing import Tuple
+from typing import Type
+from typing import Union
+
 from ..base import FS
 from .base import Opener
 
@@ -39,4 +47,4 @@ class Registry:
         cwd: Text = ...,
     ) -> Iterator[FS]: ...
 
-registry = ...
+registry: Registry = ...

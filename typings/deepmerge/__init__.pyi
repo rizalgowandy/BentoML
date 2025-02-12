@@ -1,4 +1,8 @@
-from typing import List, Literal, Tuple, Union
+from typing import List
+from typing import Literal
+from typing import Tuple
+from typing import Union
+
 from .merger import Merger
 
 DEFAULT_TYPE_SPECIFIC_MERGE_STRATEGIES: List[

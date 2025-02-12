@@ -1,286 +1,258 @@
 name: CI
-
 on:
   push:
-    branches:
-      - main
+    branches: [main]
+    paths-ignore:
+      - 'docs/**'
+      - 'bazel/**'
+      - 'typings/**'
   pull_request:
-    branches:
-      - main
-      - runners-1.0
+    paths-ignore:
+      - 'docs/**'
+      - 'bazel/**'
+      - 'typings/**'
   schedule:
     - cron: '0 0 * * 1/2'
-
 env:
-  BENTOML_DO_NOT_TRACK: True
   LINES: 120
   COLUMNS: 120
-
+  BENTOML_DO_NOT_TRACK: True
+  PYTEST_PLUGINS: bentoml.testing.pytest.plugin
+# https://docs.github.com/en/actions/using-workflows/workflow-syntax-for-github-actions#defaultsrun
+defaults:
+  run:
+    shell: bash --noprofile --norc -exo pipefail {0}
 jobs:
-
-  diff:
-    runs-on: ubuntu-latest
-    outputs:
-      related: ${{ steps.filter.outputs.related }}
-      bentoml: ${{ steps.filter.outputs.bentoml }}
-      docs: ${{ steps.filter.outputs.docs }}
-    steps:
-      - uses: actions/checkout@v2
-      - uses: dorny/paths-filter@v2
-        id: filter
-        with:
-          base: 'main'
-          filters: |
-            related: &related
-              - .github/workflows/ci.yml
-              - codecov.yml
-              - setup.cfg
-              - pyproject.toml
-              - scripts/ci/config.yml
-              - scripts/ci/run_tests.sh
-              - requirements/tests-requirements.txt
-            bentoml:
-              - *related
-              - "bentoml/**"
-              - "tests/**"
-            docs:
-              - *related
-              - requirements/docs-requirements.txt
-              - "docs/**"
-
-  codestyle_check:
-    runs-on: ubuntu-latest
-    defaults:
-      run:
-        shell: bash
-    needs:
-      - diff
-
-    if: ${{ (github.event_name == 'pull_request' && needs.diff.outputs.bentoml == 'true') || github.event_name == 'push' }}
-
-    steps:
-      - uses: actions/checkout@v2
-
-      - name: Setup python
-        uses: actions/setup-python@v2
-        with:
-          python-version: 3.9
-          architecture: x64
-
-      - name: Get pip cache dir
-        id: cache-dir
-        run: |
-          echo ::set-output name=dir::$(pip cache dir)
-
-      - name: Setup node
-        uses: actions/setup-node@v2
-        with:
-          node-version: '17'
-      - name: install pyright
-        run: |
-          npm install -g npm@^7 pyright
-
-      - name: Cache pip dependencies
-        uses: actions/cache@v2
-        id: cache-pip
-        with:
-          path: ${{ steps.cache-dir.outputs.dir }}
-          key: codestyle-${{ hashFiles('requirements/dev-requirements.txt') }}
-
-      - name: Install dependencies
-        run: |
-          pip install .
-          pip install -r requirements/dev-requirements.txt
-
-      - name: Format check
-        run: make ci-format
-      - name: Lint check
-        run: make ci-lint
-      - name: Type check
-        run: make ci-pyright
-
-  documentation_spelling_check:
-    defaults:
-      run:
-        shell: bash
-
-    runs-on: ubuntu-latest
-    needs:
-      - diff
-
-    if: ${{ (github.event_name == 'pull_request' && needs.diff.outputs.docs == 'true') || github.event_name == 'push' }}
-    steps:
-      - uses: actions/checkout@v2
-        with:
-          fetch-depth: 0 # fetch all tags and branches
-
-      - name: Setup python
-        uses: actions/setup-python@v2
-        with:
-          python-version: 3.8
-
-      - name: Get pip cache dir
-        id: cache-dir
-        run: |
-          echo ::set-output name=dir::$(pip cache dir)
-
-      - name: Cache pip dependencies
-        uses: actions/cache@v2
-        id: cache-pip
-        with:
-          path: ${{ steps.cache-dir.outputs.dir }}
-          key: ${{ runner.os }}-docs-${{ hashFiles('requirements/docs-requirements.txt') }}
-
-      - name: Install dependencies
-        run: |
-          pip install .
-          pip install -r requirements/docs-requirements.txt
-
-      - name: Install libenchant
-        run: |
-          sudo apt-get update && sudo apt-get install -y libenchant-dev
-
-      - name: Run spellcheck script
-        run: make spellcheck-docs
-        shell: bash
-
-  unit_tests:
-    needs:
-      - diff
-
+  unit:
     strategy:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, macos-latest, windows-latest]
-        python-version: [ '3.7', '3.8', '3.9', '3.10' ]
-    defaults:
-      run:
-        shell: bash
-
-    if: ${{ (github.event_name == 'pull_request' && needs.diff.outputs.bentoml == 'true') || github.event_name == 'push' }}
-    name: python${{ matrix.python-version }}_unit_tests (${{ matrix.os }})
+        python-version: [3.9, 3.11, 3.12]
+    name: unit-tests (python${{ matrix.python-version }}.${{ matrix.os }})
     runs-on: ${{ matrix.os }}
-
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v4
         with:
           fetch-depth: 0 # fetch all tags and branches
-
-      - name: Setup python
-        uses: actions/setup-python@v2
+      - name: Set up Python
+        uses: actions/setup-python@v5
         with:
+          cache: pip
           python-version: ${{ matrix.python-version }}
-          architecture: x64
-
-      - name: Get pip cache dir
-        id: cache-dir
-        run: |
-          echo ::set-output name=dir::$(pip cache dir)
-
-      - name: Cache pip dependencies
-        uses: actions/cache@v2
-        id: cache-pip
-        with:
-          path: ${{ steps.cache-dir.outputs.dir }}
-          key: ${{ runner.os }}-tests-${{ hashFiles('requirements/tests-requirements.txt') }}
-
       - name: Install dependencies
-        run: |
-          pip install .
-          pip install -r requirements/tests-requirements.txt
-
-      - name: Run unit tests
-        if: ${{ matrix.os != 'windows-latest' }}
-        run: make tests-unit
-
-      - name: Run unit tests (Windows)
-        if: ${{ matrix.os == 'windows-latest' }}
-        run: make tests-unit
-        shell: bash
-
-      - name: Upload test coverage to Codecov
-        uses: codecov/codecov-action@v2
+        run: pipx install pdm && pipx install nox
+      - name: Unit tests
+        run: nox --session unit-${{ matrix.python-version }}
+      - name: Disambiguate coverage filename
+        run: mv .coverage ".coverage.unit.${{ matrix.os }}.${{ matrix.python-version }}"
+      - name: Upload coverage data
+        uses: actions/upload-artifact@v4
         with:
-          name: codecov-${{ matrix.os }}-python${{ matrix.python-version }}
-          fail_ci_if_error: true
-          flags: unit-tests
-          directory: ./
-          files: ./unit.xml
-          verbose: true
-
-
-  bento_server_e2e_tests:
-    needs:
-      - diff
-
+          name: coverage-unit-data-${{ matrix.os }}-${{ matrix.python-version }}
+          path: .coverage.*
+          include-hidden-files: true
+  integrations:
+    name: framework-integration-tests
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        framework:
+          - catboost
+          - detectron
+          - diffusers
+          - easyocr
+          - fastai
+          - flax
+          - keras
+          - lightgbm
+          - onnx
+          - picklable_model
+          - pytorch
+          - pytorch_lightning
+          - sklearn
+          - tensorflow
+          - torchscript
+          - transformers
+          - xgboost
+        exclude:
+          - framework: transformers # NOTE: CI runners doesn't have enough space to run all transformers jobs
+          - framework: detectron # NOTE: tested locally and the latest PyPI are to obsolete.
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # fetch all tags and branches
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.9'
+          cache: pip
+      - name: Install dependencies
+        run: pipx install pdm && pipx install nox
+      - name: Run framework integration tests
+        run: nox --session "framework-integration(framework='${{ matrix.framework }}')"
+      - name: Disambiguate coverage filename
+        run: mv .coverage ".coverage.integrations.ubuntu-latest.3.9.${{ matrix.framework }}"
+      - name: Upload coverage data
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-integrations-data-${{ matrix.framework }}
+          path: .coverage.*
+          include-hidden-files: true
+  e2e-monitoring:
     strategy:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, macos-latest, windows-latest]
-        python-version: [ '3.7', '3.8', '3.9', '3.10' ]
-    defaults:
-      run:
-        shell: bash
-
-    if: ${{ (github.event_name == 'pull_request' && needs.diff.outputs.bentoml == 'true') || github.event_name == 'push' }}
-    name: python${{ matrix.python-version }}_e2e_tests (${{ matrix.os }})
+        python-version: [3.9, 3.11, 3.12]
+    name: monitoring-e2e-tests (python${{ matrix.python-version }}.${{ matrix.os }})
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 20
-
+    timeout-minutes: 90
     env:
-      SETUPTOOLS_USE_DISTUTILS: stdlib
       BENTOML_BUNDLE_LOCAL_BUILD: True
-
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v4
         with:
-          fetch-depth: 0  # fetch all tags and branches
-      - name: Setup python
-        uses: actions/setup-python@v2
-        with:
-          python-version: ${{ matrix.python-version }}
-          architecture: x64
-
+          fetch-depth: 0 # fetch all tags and branches
       - name: Set up QEMU
-        uses: docker/setup-qemu-action@v2
+        uses: docker/setup-qemu-action@v3
         if: ${{ matrix.os == 'ubuntu-latest' }}
       - name: Set up Docker Buildx
         if: ${{ matrix.os == 'ubuntu-latest' }}
         id: buildx
-        uses: docker/setup-buildx-action@v2
-
-      - name: Get pip cache dir
-        id: cache-dir
-        run: |
-          echo ::set-output name=dir::$(pip cache dir)
-
-      - name: Cache pip dependencies
-        uses: actions/cache@v2
-        id: cache-pip
+        uses: docker/setup-buildx-action@v3
+      - name: Set up Python
+        uses: actions/setup-python@v5
         with:
-          path: ${{ steps.cache-dir.outputs.dir }}
-          key: ${{ runner.os }}-tests-${{ hashFiles('requirements/tests-requirements.txt') }}
-
+          cache: pip
+          python-version: ${{ matrix.python-version }}
       - name: Install dependencies
-        run: |
-          pip install -e .
-          pip install -r requirements/tests-requirements.txt
-          pip install -r tests/e2e/bento_server_general_features/requirements.txt
-
-      - name: Export Action Envvar
-        run: export GITHUB_ACTION=true
-
-      - name: Run tests and generate coverage report
-        run: ./scripts/ci/run_tests.sh general_features -- -x -s
-
-      - name: Upload test coverage to Codecov
-        uses: codecov/codecov-action@v2
+        run: pipx install pdm && pipx install nox
+      - name: Run the monitoring tests
+        run: nox -s e2e-monitoring-${{ matrix.python-version }}
+      - name: Disambiguate coverage filename
+        run: mv .coverage ".coverage.monitoring.${{ matrix.os }}.${{ matrix.python-version }}"
+      - name: Upload coverage data
+        uses: actions/upload-artifact@v4
         with:
-          flags: e2e-tests
-          directory: ./
-          files: ./tests/e2e/bento_server_general_features/general_features.xml
-          verbose: true
-
+          name: coverage-monitoring-data-${{ matrix.os }}-${{ matrix.python-version }}
+          path: .coverage.*
+          include-hidden-files: true
+  e2e-test:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+        python-version: [3.9, 3.11, 3.12]
+        suite: ['bento_server_http', 'bento_new_sdk']
+        exclude:
+          - os: macos-latest
+            suite: bento_server_http
+            python-version: 3.12
+          - os: ubuntu-latest
+            suite: bento_server_http
+            python-version: 3.12
+    name: ${{ matrix.suite }}-e2e-tests (python${{ matrix.python-version }}.${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 90
+    env:
+      BENTOML_BUNDLE_LOCAL_BUILD: True
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # fetch all tags and branches
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+        if: ${{ matrix.os == 'ubuntu-latest' }}
+      - name: Set up Docker Buildx
+        if: ${{ matrix.os == 'ubuntu-latest' }}
+        id: buildx
+        uses: docker/setup-buildx-action@v3
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          cache: pip
+          python-version: ${{ matrix.python-version }}
+      - name: Install dependencies
+        run: pipx install pdm && pipx install nox
+      - name: Run ${{ matrix.suite }} tests
+        run: nox -s "e2e-testing-${{ matrix.python-version }}(suite='${{ matrix.suite }}')"
+      - name: Disambiguate coverage filename
+        run: mv .coverage ".coverage.e2e.${{ matrix.os }}.${{ matrix.python-version }}.${{ matrix.suite }}"
+      - name: Upload coverage data
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-e2e-data-${{ matrix.os }}-${{ matrix.python-version }}-${{ matrix.suite }}
+          path: .coverage.*
+          include-hidden-files: true
+  coverage:
+    name: report-coverage
+    runs-on: ubuntu-latest
+    needs:
+      - e2e-test
+      - e2e-monitoring
+      - unit
+      - integrations
+    if: github.event_name == 'pull_request'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          cache: pip
+          python-version: '3.11'
+      - name: Download e2e coverage
+        uses: actions/download-artifact@v4
+        with:
+          pattern: coverage-e2e-data-*
+          merge-multiple: true
+      - name: Download monitoring coverage
+        uses: actions/download-artifact@v4
+        with:
+          pattern: coverage-monitoring-data-*
+          merge-multiple: true
+      - name: Download integrations coverage
+        uses: actions/download-artifact@v4
+        with:
+          pattern: coverage-integrations-data-*
+          merge-multiple: true
+      - name: Download unit coverage
+        uses: actions/download-artifact@v4
+        with:
+          pattern: coverage-unit-data-*
+          merge-multiple: true
+      - name: Install dependencies
+        run: pipx install pdm && pipx install nox
+      - name: Export coverage reports and generate summary
+        run: nox -s coverage
+      - name: Upload uncovered HTML report
+        uses: actions/upload-artifact@v4
+        with:
+          name: uncovered-html-report
+          path: htmlcov
+      - name: Update coverage pull request comment
+        if: github.event_name == 'pull_request' && !github.event.pull_request.head.repo.fork
+        uses: marocchino/sticky-pull-request-comment@v2
+        with:
+          path: coverage-report.md
+  evergreen: # https://github.com/marketplace/actions/alls-green#why
+    if: github.event_name == 'pull_request'
+    needs:
+      - coverage
+      - e2e-test
+      - e2e-monitoring
+      - unit
+      - integrations
+    runs-on: ubuntu-latest
+    steps:
+      - name: Decide whether the needed jobs succeeded or failed
+        uses: re-actors/alls-green@release/v1
+        with:
+          jobs: ${{ toJSON(needs) }}
 concurrency:
   group: ci-${{ github.event.pull_request.number || github.sha }}
   cancel-in-progress: true

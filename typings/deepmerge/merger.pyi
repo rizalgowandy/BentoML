@@ -1,4 +1,9 @@
-from typing import Any, Dict, List, Tuple, Union
+from typing import Any
+from typing import Dict
+from typing import List
+from typing import Tuple
+from typing import Union
+
 from .strategy.core import StrategyList
 from .strategy.dict import DictStrategies
 from .strategy.list import ListStrategies
@@ -10,6 +15,7 @@ class Merger:
     PROVIDED_TYPE_STRATEGIES: Dict[
         type, Union[ListStrategies, DictStrategies, SetStrategies]
     ] = ...
+
     def __init__(
         self,
         type_strategies: List[Tuple[type, str]],
